@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>너프건 사격 이벤트 판독 시스템</title>
+    <!-- Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 구글 폰트 (Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; touch-action: manipulation; }
+        .grid-line { border: 2px dashed rgba(255, 255, 255, 0.7); }
+    </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+    <!-- 상단 헤더 -->
+    <header class="bg-slate-900/90 backdrop-blur-md p-4 shadow-lg border-b border-slate-800 z-20 flex justify-between items-center">
+        <div>
+            <h1 class="text-lg font-black tracking-tight text-blue-400 flex items-center gap-1.5">
+                🎯 너프건 챌린지 <span class="text-xs bg-blue-600 px-2 py-0.5 rounded-full text-white font-normal">T-Tactics v1.0</span>
+            </h1>
+            <p class="text-xs text-slate-400">카메라로 과녁을 맞히면 실시간 판정됩니다!</p>
+        </div>
+        <div class="flex gap-2">
+            <button id="toggleGuideBtn" class="bg-slate-800 hover:bg-slate-700 text-xs px-3 py-1.5 rounded-lg font-semibold transition border border-slate-700">
+                가이드 켜기
+            </button>
+            <button id="resetBtn" class="bg-rose-600/80 hover:bg-rose-600 text-xs px-3 py-1.5 rounded-lg font-semibold transition">
+                초기화
+            </button>
+        </div>
+    </header>
+
+    <!-- 메인 카메라 및 과녁 오버레이 뷰어 -->
+    <main class="relative flex-1 flex flex-col items-center justify-center bg-black overflow-hidden">
+        
+        <!-- 실시간 카메라 스트림 비디오 -->
+        <video id="webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+        
+        <!-- 캡처 분석용 숨겨진 캔버스 -->
+        <canvas id="canvas" class="hidden"></canvas>
+
+        <!-- 3x3 가이드라인 및 과녁 영역 오버레이 -->
+        <div id="targetOverlay" class="absolute w-[85%] max-w-[400px] aspect-[4/5] grid grid-cols-3 grid-rows-3 gap-1.5 p-2 bg-black/30 backdrop-blur-[2px] border-4 border-blue-500/80 rounded-2xl shadow-2xl transition-all duration-300 z-10 pointer-events-none">
+            <!-- 1행 -->
+            <div data-cell="0" class="cell-box bg-blue-900/80 border border-blue-400/40 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner">
+                <span class="text-[10px] font-bold text-blue-200">에이닷 전화</span>
+                <span class="text-[9px] text-slate-300">녹음·요약·안심</span>
+            </div>
+            <div data-cell="1" class="cell-box bg-white/90 text-blue-900 border border-slate-300 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner font-black text-lg">
+                꽝
+            </div>
+            <div data-cell="2" class="cell-box bg-blue-900/80 border border-blue-400/40 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner">
+                <span class="text-[10px] font-bold text-blue-200">베스트&라이트</span>
+                <span class="text-[9px] text-slate-300">청년 요금제 혜택</span>
+            </div>
+
+            <!-- 2행 -->
+            <div data-cell="3" class="cell-box bg-white/90 text-blue-900 border border-slate-300 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner font-black text-lg">
+                꽝
+            </div>
+            <div data-cell="4" class="cell-box bg-blue-900 border-2 border-amber-400 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-lg scale-105">
+                <span class="text-[9px] text-amber-300 font-bold">T멤버십</span>
+                <span class="text-[11px] font-extrabold text-white">YOUNG WEEK</span>
+            </div>
+            <div data-cell="5" class="cell-box bg-white/90 text-blue-900 border border-slate-300 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner font-black text-lg">
+                꽝
+            </div>
+
+            <!-- 3행 -->
+            <div data-cell="6" class="cell-box bg-blue-900/80 border border-blue-400/40 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner">
+                <span class="text-[10px] font-bold text-blue-200">T우주</span>
+                <span class="text-[9px] text-slate-300">편의점·카페할인</span>
+            </div>
+            <div data-cell="7" class="cell-box bg-white/90 text-blue-900 border border-slate-300 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner font-black text-lg">
+                꽝
+            </div>
+            <div data-cell="8" class="cell-box bg-blue-900/80 border border-blue-400/40 rounded-lg flex flex-col items-center justify-center p-1 text-center shadow-inner">
+                <span class="text-[10px] font-bold text-blue-200">청년로밍</span>
+                <span class="text-[9px] text-slate-300">특별 할인</span>
+            </div>
+        </div>
+
+        <!-- 명중 시 터지는 화려한 애니메이션 팝업 알림 -->
+        <div id="hitPopup" class="absolute inset-0 bg-blue-600/40 backdrop-blur-md flex flex-col items-center justify-center z-30 opacity-0 pointer-events-none transition-all duration-300 scale-90">
+            <div class="bg-slate-900 border-4 border-amber-400 p-8 rounded-3xl shadow-2xl text-center max-w-xs mx-4 animate-bounce">
+                <span id="popupBadge" class="bg-amber-400 text-slate-950 font-black px-4 py-1 rounded-full text-sm uppercase tracking-wider">HIT! 명중!</span>
+                <h2 id="popupTitle" class="text-3xl font-black mt-4 text-white">T멤버십 YOUNG WEEK</h2>
+                <p id="popupDesc" class="text-sm text-slate-300 mt-2">축하합니다! 상품 획득 기회!</p>
+                <button id="closePopupBtn" class="mt-6 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 font-bold py-3 px-6 rounded-xl shadow-lg transition">
+                    다음 게임 진행
+                </button>
+            </div>
+        </div>
+
+        <!-- 상태 안내 메시지 바 -->
+        <div id="statusToast" class="absolute bottom-6 bg-slate-900/90 border border-slate-700 px-5 py-2.5 rounded-full text-xs font-medium tracking-wide shadow-xl z-20 transition-all">
+            카메라를 과녁에 고정하고 [기준 화면 저장]을 눌러주세요.
+        </div>
+    </main>
+
+    <!-- 하단 제어 컨트롤 패널 -->
+    <footer class="bg-slate-900/95 backdrop-blur-md p-4 border-t border-slate-800 z-20 flex flex-col gap-3">
+        <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+            <span>감지 민감도: <strong id="sensVal" class="text-blue-400">보통 (25)</strong></span>
+            <div class="flex items-center gap-2">
+                <label for="sensitivity" class="cursor-pointer">조절</label>
+                <input id="sensitivity" type="range" min="10" max="60" value="25" class="accent-blue-500 w-24">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <button id="captureBtn" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-blue-900/30 transition flex items-center justify-center gap-2 text-sm">
+                📷 기준 화면 저장 (세팅)
+            </button>
+            <button id="detectToggleBtn" disabled class="bg-slate-800 text-slate-500 font-bold py-3.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm border border-slate-700">
+                ▶️ 실시간 감지 대기
+            </button>
+        </div>
+    </footer>
+
+    <!-- 자바스크립트 로직 -->
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        const captureBtn = document.getElementById('captureBtn');
+        const detectToggleBtn = document.getElementById('detectToggleBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const toggleGuideBtn = document.getElementById('toggleGuideBtn');
+        const targetOverlay = document.getElementById('targetOverlay');
+        const statusToast = document.getElementById('statusToast');
+        const sensitivityInput = document.getElementById('sensitivity');
+        const sensVal = document.getElementById('sensVal');
+        
+        const hitPopup = document.getElementById('hitPopup');
+        const popupTitle = document.getElementById('popupTitle');
+        const popupDesc = document.getElementById('popupDesc');
+        const popupBadge = document.getElementById('popupBadge');
+        const closePopupBtn = document.getElementById('closePopupBtn');
+
+        let isCaptured = false;
+        let isDetecting = false;
+        let baselineImageData = null;
+        let detectionInterval = null;
+
+        // 칸별 정보 매핑
+        const cellInfo = {
+            0: { title: "에이닷 전화", desc: "녹음, 요약, 안심 기능 혜택 당첨!", isPrize: true },
+            1: { title: "꽝!", desc: "아쉽습니다! 다음 기회에 도전하세요.", isPrize: false },
+            2: { title: "베스트&라이트", desc: "청년 요금제 특별 혜택 당첨!", isPrize: true },
+            3: { title: "꽝!", desc: "아쉽습니다! 다음 기회에 도전하세요.", isPrize: false },
+            4: { title: "T멤버십 YOUNG WEEK", desc: "축하합니다! 메인 당첨 상품 획득!", isPrize: true },
+            5: { title: "꽝!", desc: "아쉽습니다! 다음 기회에 도전하세요.", isPrize: false },
+            6: { title: "T우주 편의점 & 카페", desc: "할인 쿠폰 패키지 당첨!", isPrize: true },
+            7: { title: "꽝!", desc: "아쉽습니다! 다음 기회에 도전하세요.", isPrize: false },
+            8: { title: "청년로밍 할인", desc: "해외 로밍 특별 할인 혜택 당첨!", isPrize: true }
+        };
+
+        // 후면 카메라 자동 연결 실행
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: "environment" } },
+                    audio: false
+                }).catch(() => {
+                    // 환경 후면 카메라가 없을 시 기본 카메라로 대체
+                    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                });
+                video.srcObject = stream;
+                statusToast.textContent = "카메라가 연결되었습니다. 과녁을 박스 안에 맞춰주세요.";
+            } catch (err) {
+                statusToast.textContent = "카메라 접근 권한이 필요하거나 지원하지 않는 기기입니다.";
+                console.error(err);
+            }
+        }
+
+        // Web Audio API 효과음 생성기 (외부 오디오 파일 불필요)
+        function playSound(type) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'success') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.4);
+                } else if (type === 'fail') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(120, audioCtx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.3);
+                } else {
+                    // 셔터음
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                }
+            } catch (e) {
+                console.log("Audio Context Error: ", e);
+            }
+        }
+
+        // 민감도 표시 업데이트
+        sensitivityInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            sensVal.textContent = val < 20 ? `민감함 (${val})` : val > 40 ? `둔감함 (${val})` : `보통 (${val})`;
+        });
+
+        // 가이드 토글
+        let guideVisible = true;
+        toggleGuideBtn.addEventListener('click', () => {
+            guideVisible = !guideVisible;
+            targetOverlay.style.opacity = guideVisible ? '1' : '0.1';
+            toggleGuideBtn.textContent = guideVisible ? '가이드 끄기' : '가이드 켜기';
+        });
+
+        // 1. 기준 화면(배경) 캡처 버튼
+        captureBtn.addEventListener('click', () => {
+            if (video.videoWidth === 0) {
+                statusToast.textContent = "카메라가 아직 준비되지 않았습니다.";
+                return;
+            }
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // 전체 화면 픽셀 데이터 저장
+            baselineImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            isCaptured = true;
+            
+            playSound('shutter');
+            statusToast.textContent = "✨ 기준 화면이 저장되었습니다! [실시간 감지 시작]을 누르세요.";
+            statusToast.className = "absolute bottom-6 bg-emerald-900/90 border border-emerald-500 px-5 py-2.5 rounded-full text-xs font-medium tracking-wide shadow-xl z-20 text-emerald-200 transition-all";
+            
+            detectToggleBtn.disabled = false;
+            detectToggleBtn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2 text-sm";
+            detectToggleBtn.textContent = "▶️ 실시간 감지 시작";
+        });
+
+        // 2. 실시간 감지 토글 버튼
+        detectToggleBtn.addEventListener('click', () => {
+            if (!isCaptured) return;
+            
+            isDetecting = !isDetecting;
+            if (isDetecting) {
+                detectToggleBtn.textContent = "⏸️ 감지 중지";
+                detectToggleBtn.className = "bg-amber-600 hover:bg-amber-500 text-white font-bold py-3.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm";
+                statusToast.textContent = "🎯 너프건 사격을 기다리는 중... (과녁을 타격하세요!)";
+                startDetectionLoop();
+            } else {
+                stopDetectionLoop();
+                detectToggleBtn.textContent = "▶️ 실시간 감지 시작";
+                detectToggleBtn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm";
+                statusToast.textContent = "감지가 일시정지되었습니다.";
+            }
+        });
+
+        // 3. 픽셀 변화 감지 및 과녁 구역 매핑 루프
+        function startDetectionLoop() {
+            const threshold = parseInt(sensitivityInput.value);
+            
+            detectionInterval = setInterval(() => {
+                if (!isDetecting || !baselineImageData) return;
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const currentData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // 오버레이 엘리먼트의 화면 상 위치 비율 계산
+                const rect = targetOverlay.getBoundingClientRect();
+                const videoRect = video.getBoundingClientRect();
+
+                // 비디오 렌더링 스케일 대비 비율
+                const scaleX = canvas.width / videoRect.width;
+                const scaleY = canvas.height / videoRect.height;
+
+                // 과녁 오버레이 박스의 비디오 내부 픽셀 좌표계 산출
+                const boxLeft = (rect.left - videoRect.left) * scaleX;
+                const boxTop = (rect.top - videoRect.top) * scaleY;
+                const boxWidth = rect.width * scaleX;
+                const boxHeight = rect.height * scaleY;
+
+                let diffPixels = 0;
+                let sumX = 0;
+                let sumY = 0;
+                
+                // 성능을 위해 샘플링 간격(step) 적용
+                const step = 6;
+                const startX = Math.max(0, Math.floor(boxLeft));
+                const endX = Math.min(canvas.width, Math.floor(boxLeft + boxWidth));
+                const startY = Math.max(0, Math.floor(boxTop));
+                const endY = Math.min(canvas.height, Math.floor(boxTop + boxHeight));
+
+                for (let y = startY; y < endY; y += step) {
+                    for (let x = startX; x < endX; x += step) {
+                        const index = (y * canvas.width + x) * 4;
+                        const rDiff = Math.abs(currentData.data[index] - baselineImageData.data[index]);
+                        const gDiff = Math.abs(currentData.data[index + 1] - baselineImageData.data[index + 1]);
+                        const bDiff = Math.abs(currentData.data[index + 2] - baselineImageData.data[index + 2]);
+
+                        // 색상 차이가 민감도 임계값을 넘으면 변화(다트 타격)로 판정
+                        if ((rDiff + gDiff + bDiff) / 3 > threshold * 2.2) {
+                            diffPixels++;
+                            sumX += (x - boxLeft);
+                            sumY += (y - boxTop);
+                        }
+                    }
+                }
+
+                // 일정 면적 이상의 변화가 감지되면 명중으로 처리
+                if (diffPixels > 15) {
+                    stopDetectionLoop();
+                    
+                    // 평균 타격 좌표를 통해 3x3 그리드 중 어떤 칸(0~8)인지 계산
+                    const avgX = sumX / diffPixels;
+                    const avgY = sumY / diffPixels;
+                    
+                    const col = Math.floor((avgX / boxWidth) * 3);
+                    const row = Math.floor((avgY / boxHeight) * 3);
+                    const cellIndex = Math.min(Math.max(row * 3 + col, 0), 8);
+                    
+                    triggerHitEvent(cellIndex);
+                }
+
+            }, 200); // 0.2초 주기로 프레임 비교
+        }
+
+        function stopDetectionLoop() {
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+        }
+
+        // 명중 이벤트 발생 시 처리
+        function triggerHitEvent(cellIndex) {
+            const info = cellInfo[cellIndex];
+            
+            if (info.isPrize) {
+                playSound('success');
+                popupBadge.textContent = "🎉 당첨 성공!";
+                popupBadge.className = "bg-amber-400 text-slate-950 font-black px-4 py-1 rounded-full text-sm uppercase tracking-wider";
+            } else {
+                playSound('fail');
+                popupBadge.className = "bg-rose-500 text-white font-black px-4 py-1 rounded-full text-sm uppercase tracking-wider";
+                popupBadge.textContent = "꽝! 아쉬워요";
+            }
+
+            popupTitle.textContent = info.title;
+            popupDesc.textContent = info.desc;
+
+            // 팝업 애니메이션 오픈
+            hitPopup.classList.remove('opacity-0', 'pointer-events-none', 'scale-90');
+            hitPopup.classList.add('opacity-100', 'scale-100');
+        }
+
+        // 팝업 닫고 재개
+        closePopupBtn.addEventListener('click', () => {
+            hitPopup.classList.remove('opacity-100', 'scale-100');
+            hitPopup.classList.add('opacity-0', 'pointer-events-none', 'scale-90');
+            
+            // 감지 재개 준비 상태로 전환
+            isDetecting = false;
+            detectToggleBtn.textContent = "▶️ 기준 새로고침 후 시작";
+            detectToggleBtn.className = "bg-slate-800 text-slate-400 font-bold py-3.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm border border-slate-700";
+            statusToast.textContent = "다트를 제거하신 후 [기준 화면 저장]을 다시 눌러주세요.";
+        });
+
+        // 전체 초기화
+        resetBtn.addEventListener('click', () => {
+            stopDetectionLoop();
+            isCaptured = false;
+            isDetecting = false;
+            baselineImageData = null;
+            detectToggleBtn.disabled = true;
+            detectToggleBtn.textContent = "▶️ 실시간 감지 대기";
+            detectToggleBtn.className = "bg-slate-800 text-slate-500 font-bold py-3.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm border border-slate-700";
+            statusToast.textContent = "초기화되었습니다. 다시 과녁을 맞추고 [기준 화면 저장]을 진행하세요.";
+            statusToast.className = "absolute bottom-6 bg-slate-900/90 border border-slate-700 px-5 py-2.5 rounded-full text-xs font-medium tracking-wide shadow-xl z-20 transition-all";
+        });
+
+        // 페이지 로드 시 카메라 실행
+        window.addEventListener('load', initCamera);
+    </script>
+</body>
+</html>
